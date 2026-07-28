@@ -1,6 +1,3 @@
-const dns = require('node:dns');
-dns.setServers(['1.1.1.1', '1.0.0.1']); 
-
 const express = require("express");
 const dontenv = require("dotenv");
 const cors = require("cors");
@@ -33,7 +30,42 @@ async function run() {
     await client.connect();
     const db = client.db("tech-bazaar");
 
- 
+    // collection
+
+    const SubscriptionCollection = db.collection("subscription");
+    const usersCollection = db.collection("user");
+
+    // all route
+
+    // post route
+
+    // subscription post route
+
+    app.post("/subscription", async (req, res) => {
+      const { sessionId, userId, priceId } = req.body;
+
+      const isExist = await SubscriptionCollection.findOne({
+        sessionId,
+      });
+
+      if (!isExist) {
+        return res.json({msg: "Already Exist"})
+      }
+      
+      const result = await SubscriptionCollection.insertOne({
+        sessionId,
+        userId,
+        priceId,
+      });
+
+      // update user
+      await usersCollection.updateOne(
+        { _id: new ObjectId(userId) },
+        { $set: { plan: "pro" } },
+      );
+
+      res.json({ msg: "Payment Successfull" });
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
