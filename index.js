@@ -2,6 +2,7 @@ const express = require("express");
 const dontenv = require("dotenv");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 dontenv.config();
 
 const uri = process.env.MONGODB_URI;
@@ -25,6 +26,45 @@ const client = new MongoClient(uri, {
   },
 });
 
+
+// JWKS 
+
+const JWKS = createRemoteJWKSet(new URL(`${process.env.CLIENT_URL}/api/auth/jwks`))
+
+const verifyToken = async (req,res,next)=>{
+const authHeader = req.headers.authorization
+
+if (!authHeader || !authHeader.startsWith("Bearer")) {
+  return res.status(401).json({msg: "unauthorized"});
+}
+
+const token = authHeader.split(" ")[1]
+
+if (!token) {
+  return res.status(401).json({msg: "unauthorized"})
+}
+
+try {
+  const {payload} = await jwtVerify(token, JWKS)
+  req.user = payload
+  next()
+} catch (error) {
+  console.log(error)
+  return res.status(401).json({msg: "unauthorized"});
+}
+}
+
+const sellerVerify = async(req,res,next)=>{
+const user = req.user 
+
+if (user.role !== "seller" || user.plan !== "pro") {
+  return res.status(403).json({msg: "forbidden"});
+}
+
+console.log("User from seller verify", user)
+next()
+}
+
 async function run() {
   try {
     await client.connect();
@@ -34,6 +74,7 @@ async function run() {
 
     const SubscriptionCollection = db.collection("subscription");
     const usersCollection = db.collection("user");
+    const productCollection = db.collection("products");
 
     // all route
 
@@ -66,6 +107,18 @@ async function run() {
 
       res.json({ msg: "Payment Successfull" });
     });
+
+
+//  product upload post 
+
+    app.post("/seller/products",verifyToken, sellerVerify, async(req,res)=>{
+      const data = req.body
+      const result = await  productCollection.insertOne({...data, userId: req.user.id})
+
+      res.send(result)
+    })
+
+
 
     await client.db("admin").command({ ping: 1 });
     console.log(
